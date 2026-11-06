@@ -46,6 +46,7 @@ APS5_RUN_REPORT_COMPONENT("libSceVideoOut")
 namespace {
 
 constexpr std::uint64_t FLIP_ROOM_WAIT_MICROS = 60000000;
+constexpr std::size_t FLIP_PENDING_LIMIT = 2;
 constexpr std::uint64_t PRESENT_POLL_MICROS = 10000;
 constexpr std::int64_t FRAME_LIMIT_SLICE_NANOS = 20000000;
 
@@ -519,8 +520,15 @@ bool VideoOutDriver::HasConfig(int handle) {
 
 int VideoOutDriver::SubmitFlip(int handle, int index, int flipMode, int64_t flipArg) {
     if (LibcShutdownToken_nid_postfix().stop_requested()) throw ProcessShutdown{};
-    // A title that does not pace on flipPendingNum can run ahead of the presenter now that the queue
-    // worker no longer waits per flip; a full queue is the documented error, not a failure.
+    if (flipQueue->reservations.load() >= FLIP_PENDING_LIMIT) {
+        std::unique_lock lock(flipQueue->mutex);
+        const bool room = flipQueue->changed.WaitUntil(lock, TimedWait::DeadlineNanos(FLIP_ROOM_WAIT_MICROS), [&] {
+            return flipQueue->failure || flipQueue->stopping || LibcShutdownToken_nid_postfix().stop_requested() || flipQueue->reservations.load() < FLIP_PENDING_LIMIT;
+        });
+        if (flipQueue->failure) std::rethrow_exception(flipQueue->failure);
+        if (flipQueue->stopping || LibcShutdownToken_nid_postfix().stop_requested()) throw ProcessShutdown{};
+        if (!room) return VIDEO_OUT_ERROR_FLIP_QUEUE_FULL;
+    }
     if (flipQueue->reservations.load() >= VIDEO_OUT_FLIP_QUEUE_CAPACITY) return VIDEO_OUT_ERROR_FLIP_QUEUE_FULL;
     AgcDriverSubmitFlip_nid_postfix(AgcDriver::FlipInfo{static_cast<std::uint32_t>(handle), index, static_cast<std::uint32_t>(flipMode), flipArg});
     return 0;
