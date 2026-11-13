@@ -1223,6 +1223,7 @@ int run(const Options& options) {
 #endif
     if (reader.Truncated()) std::fprintf(stderr, "[frame-replay] the capture is truncated; replaying the complete records\n");
     auto skipped = restoreMemory(reader);
+    if (const auto planes = AgcDriverLoadSavedDepth_nid_postfix((options.directory / "depth.bin").string().c_str()); planes != 0) std::fprintf(stderr, "[frame-replay] %zu saved depth planes\n", planes);
     const auto loaded = Clock::now();
     Replay replay{options, reader};
     replay.skipped = std::move(skipped);

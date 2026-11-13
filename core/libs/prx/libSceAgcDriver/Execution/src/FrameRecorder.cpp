@@ -3,6 +3,7 @@
 #include "prx/libSceAgcDriver/Execution/include/Driver/Driver.hpp"
 #include "prx/libSceAgcDriver/Execution/include/GuestMemory.hpp"
 #include "prx/libSceAgcDriver/Graphics/include/MultisampleTarget.hpp"
+#include "prx/libSceAgcDriver/Graphics/include/DepthSurface.hpp"
 #include "prx/libSceAgcDriver/TraceRevision.hpp"
 #include "prx/libc/include/GuestAllocations.hpp"
 #include "prx/libc/include/GuestArena.hpp"
@@ -595,6 +596,7 @@ void FrameRecorder::start() {
         ranges.push_back(range);
     }
     prologueHostPages.clear();
+    writeSavedDepth();
     for (const auto& call : prologue) writer->WriteCall(call);
     std::uintptr_t ringBase = 0;
     std::uint32_t ringSize = 0;
@@ -618,6 +620,31 @@ void FrameRecorder::start() {
     recordedFrames = 0;
     std::fprintf(stderr, "[frame-capture] started at frame boundary %llu: %zu ranges, %.1f MiB snapshot in %.1f s\n", static_cast<unsigned long long>(boundaries), ranges.size(),
                  static_cast<double>(snapshotBytes) / (1024.0 * 1024.0), std::chrono::duration<double>(std::chrono::steady_clock::now() - startedAt).count());
+}
+
+// depth.bin: per plane, the DepthTarget bytes, the host format, the plane size and the packed texels.
+void FrameRecorder::writeSavedDepth() {
+    const auto saved = Graphics::ReadBackDepthSurfaces();
+    std::ofstream file(directory / "depth.bin", std::ios::binary | std::ios::trunc);
+    const std::uint32_t magic = 0x48545044; // "DPTH"
+    const auto count = static_cast<std::uint32_t>(saved.size());
+    const auto targetBytes = static_cast<std::uint32_t>(sizeof(Graphics::DepthTarget));
+    file.write(reinterpret_cast<const char*>(&magic), sizeof(magic));
+    file.write(reinterpret_cast<const char*>(&targetBytes), sizeof(targetBytes));
+    file.write(reinterpret_cast<const char*>(&count), sizeof(count));
+    std::uint64_t total = 0;
+    for (const auto& plane : saved) {
+        file.write(reinterpret_cast<const char*>(&plane.target), sizeof(plane.target));
+        const auto format = static_cast<std::int32_t>(plane.hostFormat);
+        const auto bytes = static_cast<std::uint64_t>(plane.depth.size());
+        file.write(reinterpret_cast<const char*>(&format), sizeof(format));
+        file.write(reinterpret_cast<const char*>(&bytes), sizeof(bytes));
+        file.write(reinterpret_cast<const char*>(plane.depth.data()), static_cast<std::streamsize>(bytes));
+        total += bytes;
+    }
+    if (!file) throw std::runtime_error("frame capture: depth.bin could not be written");
+    savedDepthPlanes = saved.size();
+    std::fprintf(stderr, "[frame-capture] saved %zu GPU-only depth planes (%.1f MiB)\n", saved.size(), static_cast<double>(total) / (1024.0 * 1024.0));
 }
 
 void FrameRecorder::finish() {
@@ -649,6 +676,7 @@ std::string FrameRecorder::header() const {
     text += ",\"calls\":" + std::to_string(recordedCalls) + ",\"prologue_calls\":" + std::to_string(prologue.size());
     text += ",\"ranges\":" + std::to_string(ranges.size()) + ",\"late_ranges\":" + std::to_string(lateRanges) + ",\"snapshot_bytes\":" + std::to_string(snapshotBytes) + ",\"unreadable_bytes\":" + std::to_string(unreadableBytes) + ",\"host_only_sample_bytes\":" + std::to_string(hostOnlySampleBytes);
     text += ",\"memory_groups\":" + std::to_string(deltaGroups) + ",\"delta_bytes\":" + std::to_string(deltaBytes);
+    text += ",\"saved_depth_planes\":" + std::to_string(savedDepthPlanes);
     text += ",\"capture_seconds\":" + std::to_string(std::chrono::duration<double>(std::chrono::steady_clock::now() - startedAt).count());
     text += ",\"env\":{";
     bool first = true;

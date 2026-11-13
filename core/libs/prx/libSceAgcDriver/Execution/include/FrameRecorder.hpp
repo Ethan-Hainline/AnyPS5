@@ -72,6 +72,7 @@ private:
     static void collectShaderPages(std::span<const Shader* const> shaders, std::set<std::uint64_t>& blocks, std::set<std::uint64_t>& hostPages);
     void emitShaderDelta(std::span<const Shader* const> shaders);
     void writeDelta(std::span<Span> spans, std::span<const std::uint64_t> hostPages, std::span<const Range> added = {});
+    void writeSavedDepth();
     void frameBoundaryLocked();
     bool triggered();
     void start();
@@ -116,6 +117,7 @@ private:
     std::uint64_t hostOnlySampleBytes = 0;
     std::uint64_t allocationsGeneration = 0;
     std::uint64_t lateRanges = 0;
+    std::uint64_t savedDepthPlanes = 0;
     std::vector<std::string> warnings;
     std::chrono::steady_clock::time_point origin;
     std::chrono::steady_clock::time_point startedAt;

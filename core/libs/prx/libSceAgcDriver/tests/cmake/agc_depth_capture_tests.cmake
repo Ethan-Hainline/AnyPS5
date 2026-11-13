@@ -1,0 +1,15 @@
+add_test_executable(agc_depth_capture_tests EXCLUDE_FROM_ALL tests/DepthCapture.cpp)
+target_include_directories(agc_depth_capture_tests PRIVATE ${LIBS_INCLUDE_DIR} ${ANYPS5_VULKAN_HEADERS_INCLUDE_DIR})
+target_link_libraries(agc_depth_capture_tests PRIVATE libSceAgcDriver libkernel libc)
+set_target_properties(agc_depth_capture_tests PROPERTIES CXX_EXTENSIONS OFF)
+configure_windows_unwind(agc_depth_capture_tests)
+
+if(BUILD_TESTING)
+    set_target_properties(agc_depth_capture_tests PROPERTIES EXCLUDE_FROM_ALL OFF)
+    add_test(NAME agc_depth_capture COMMAND agc_depth_capture_tests)
+    set_tests_properties(agc_depth_capture PROPERTIES TIMEOUT 20)
+    if(WIN32)
+        set_tests_properties(agc_depth_capture PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libSceAgcDriver>;PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>;PATH=path_list_prepend:$<TARGET_FILE_DIR:libkernel>")
+    endif()
+endif()

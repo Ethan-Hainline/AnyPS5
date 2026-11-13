@@ -157,6 +157,17 @@ struct DepthClearStatistics {
 DepthClearStatistics DepthClearCounts();
 void SetDepthPlaneClearForTest(bool enabled);
 
+// Frame capture support. Depth planes AnyPS5 keeps only on the GPU (every format but the mirrorable D32 one)
+// are not in guest memory, so a capture reads them back at its start and the replay recreates them when a
+// texture first samples one. Planes are tightly packed texels of the host depth aspect.
+struct SavedDepthSurface {
+    DepthTarget target{};
+    VkFormat hostFormat = VK_FORMAT_UNDEFINED;
+    std::vector<std::byte> depth;
+};
+std::vector<SavedDepthSurface> ReadBackDepthSurfaces();
+void SetSavedDepthSurfaces(std::vector<SavedDepthSurface> saved);
+
 }
 
 #endif
