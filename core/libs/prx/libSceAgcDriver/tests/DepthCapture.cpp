@@ -115,6 +115,14 @@ int main() {
     Require(Throws([&] { AgcDriverLoadSavedDepth_nid_postfix(badFormatPath.string().c_str()); }), "an unsupported host format was accepted");
     std::filesystem::remove(badFormatPath);
 
+    auto multisample = target;
+    multisample.samples = 4;
+    auto multisampleBytes = Header(1);
+    AppendPlane(multisampleBytes, multisample, VK_FORMAT_D16_UNORM, depth);
+    const auto multisamplePath = Write("anyps5-depth-capture-multisample.bin", multisampleBytes);
+    Require(Throws([&] { AgcDriverLoadSavedDepth_nid_postfix(multisamplePath.string().c_str()); }), "a multisample plane was accepted");
+    std::filesystem::remove(multisamplePath);
+
     auto badBytes = Header(1);
     AppendPlane(badBytes, target, VK_FORMAT_D16_UNORM, std::span<const std::byte>(depth).first(depth.size() - 2));
     const auto badBytesPath = Write("anyps5-depth-capture-bad-bytes.bin", badBytes);

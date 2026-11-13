@@ -4526,7 +4526,7 @@ extern "C" std::size_t AgcDriverLoadSavedDepth_nid_postfix(const char* path) {
         if (!file) throw std::runtime_error("frame replay: depth.bin is truncated");
         const auto texelBytes = format == VK_FORMAT_D16_UNORM || format == VK_FORMAT_D16_UNORM_S8_UINT ? 2u : format == VK_FORMAT_D32_SFLOAT || format == VK_FORMAT_D32_SFLOAT_S8_UINT ? 4u : 0u;
         const auto expected = static_cast<std::uint64_t>(plane.target.extent.width) * plane.target.extent.height * texelBytes;
-        if (texelBytes == 0u || plane.target.extent.width == 0u || plane.target.extent.height == 0u || bytes != expected) throw std::runtime_error("frame replay: depth.bin has an invalid plane");
+        if (texelBytes == 0u || plane.target.samples != 1u || plane.target.extent.width == 0u || plane.target.extent.height == 0u || bytes != expected) throw std::runtime_error("frame replay: depth.bin has an invalid plane");
         plane.hostFormat = static_cast<VkFormat>(format);
         plane.depth.resize(static_cast<std::size_t>(bytes));
         file.read(reinterpret_cast<char*>(plane.depth.data()), static_cast<std::streamsize>(bytes));
