@@ -199,9 +199,10 @@ def audit(libraries):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="List exported functions that access a guest pointer parameter directly instead of through GuestCopyIn, GuestCopyOut or the CopyGuest* helpers. A report, not a gate: it always exits 0 and does not follow a pointer passed to another function. Definitions with internal linkage are callbacks rather than exports and are left out.")
+    parser = argparse.ArgumentParser(description="List exported functions that access a guest pointer parameter directly instead of through GuestCopyIn, GuestCopyOut or the CopyGuest* helpers. A report by default; --require-zero makes it a gate for the named libraries. It does not follow a pointer passed to another function. Definitions with internal linkage are callbacks rather than exports and are left out.")
     parser.add_argument("libraries", nargs="*", help="library directories under core/libs/prx (default: all)")
     parser.add_argument("--json", action="store_true", help="print the findings as JSON")
+    parser.add_argument("--require-zero", action="store_true", help="exit 1 when any finding is reported")
     args = parser.parse_args(argv)
     available = {path.name for path in PRX.iterdir() if path.is_dir() and not path.is_symlink()}
     names = args.libraries or sorted(available)
@@ -211,14 +212,14 @@ def main(argv=None):
     report = audit([PRX / name for name in names])
     if args.json:
         print(json.dumps(report, indent=2))
-        return 0
+        return 1 if args.require_zero and report else 0
     for entry in report:
         print(f"{entry['file']}:{entry['line']}: {entry['function']}: parameter {entry['parameter']} ({', '.join(entry['kinds'])})")
     counts = Counter(entry["library"] for entry in report)
     print(f"{len(report)} direct guest pointer accesses in {len({(e['file'], e['function']) for e in report})} exported functions")
     for library, count in counts.most_common():
         print(f"  {count:5} {library}")
-    return 0
+    return 1 if args.require_zero and report else 0
 
 
 if __name__ == "__main__":

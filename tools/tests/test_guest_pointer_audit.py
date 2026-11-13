@@ -223,6 +223,19 @@ class CommandLineTests(unittest.TestCase):
         self.assertIn("core/libs/prx/libSceExample/Export.cpp:1: sceExampleGet: parameter out (index)", output)
         self.assertIn("1 direct guest pointer accesses in 1 exported functions", output)
 
+    def test_require_zero_fails_on_findings(self):
+        code, _ = self.run_main(["--require-zero", "libSceExample"], {"libSceExample/Export.cpp": "int APS5_VABI sceExampleGet(int* out) { *out = 1; return 0; }\n"})
+        self.assertEqual(code, 1)
+
+    def test_require_zero_passes_on_clean_library(self):
+        code, _ = self.run_main(["--require-zero", "libSceExample"], {"libSceExample/Export.cpp": "int APS5_VABI sceExampleGet(int* out) { GuestCopyOut_nid_no_patch(out, &value, sizeof(value)); return 0; }\n"})
+        self.assertEqual(code, 0)
+
+    def test_require_zero_applies_to_json(self):
+        code, output = self.run_main(["--json", "--require-zero", "libSceExample"], {"libSceExample/Export.cpp": "int APS5_VABI sceExampleGet(int* out) { *out = 1; return 0; }\n"})
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(output)[0]["function"], "sceExampleGet")
+
     def test_unknown_library_is_a_usage_error(self):
         with contextlib.redirect_stderr(io.StringIO()) as errors, self.assertRaises(SystemExit) as raised:
             self.run_main(["libSceMissing"], {"libSceExample/Export.cpp": ""})
