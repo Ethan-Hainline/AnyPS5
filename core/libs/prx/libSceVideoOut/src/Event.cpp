@@ -7,6 +7,7 @@
 
 #include "SceTypes.hpp"
 #include "prx/libc/include/General.hpp"
+#include "prx/libc/include/GuestPtr.hpp"
 #include "prx/libkernel/Equeue/Equeue.hpp"
 #include "prx/libSceVideoOut/include/VideoOutDriver.hpp"
 
@@ -190,8 +191,10 @@ int APS5_VABI sceVideoOutSysAddSetModeEvent2(KernelEqueue eq, int index, void* u
 
 int APS5_VABI sceVideoOutGetEventId(const KernelEvent* ev) {
     if (ev == nullptr) return VIDEO_OUT_ERROR_INVALID_ADDRESS;
-    if (ev->filter != EVFILT_VIDEO_OUT) return VIDEO_OUT_ERROR_INVALID_EVENT;
-    const uintptr_t ident = ev->ident;
+    KernelEvent event{};
+    if (!GuestPtr<const KernelEvent>(ev).CopyIn(event)) return VIDEO_OUT_ERROR_INVALID_ADDRESS;
+    if (event.filter != EVFILT_VIDEO_OUT) return VIDEO_OUT_ERROR_INVALID_EVENT;
+    const uintptr_t ident = event.ident;
     if (ident != VIDEO_OUT_EVENT_FLIP && ident != VIDEO_OUT_EVENT_VBLANK && ident != VIDEO_OUT_EVENT_PRE_VBLANK_START && ident != VIDEO_OUT_EVENT_SET_MODE && ident != VIDEO_OUT_EVENT_VRR_STATUS) return VIDEO_OUT_ERROR_INVALID_EVENT;
     return static_cast<int>(ident);
 }
@@ -224,7 +227,11 @@ int APS5_VABI sceVideoOutGetEventCount(const KernelEvent* ev) {
     if (ev == nullptr) {
         throw std::runtime_error(std::string(__func__) + ": VIDEO_OUT_ERROR_INVALID_ADDRESS");
     }
-    return static_cast<int>((static_cast<uint64_t>(ev->data) >> 12u) & 0xfu);
+    KernelEvent event{};
+    if (!GuestPtr<const KernelEvent>(ev).CopyIn(event)) {
+        throw std::runtime_error(std::string(__func__) + ": VIDEO_OUT_ERROR_INVALID_ADDRESS");
+    }
+    return static_cast<int>((static_cast<uint64_t>(event.data) >> 12u) & 0xfu);
 }
 
 }
