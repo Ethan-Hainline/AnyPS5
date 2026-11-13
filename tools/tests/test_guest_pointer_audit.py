@@ -13,7 +13,12 @@ import progress
 
 
 def findings(source):
-    return [(entry["function"], entry["parameter"], entry["kinds"]) for entry in guest_pointer_audit.audit_text(guest_pointer_audit.source_code(source))]
+    return [
+        (entry["function"], entry["parameter"], entry["kinds"])
+        for entry in guest_pointer_audit.audit_text(
+            guest_pointer_audit.source_code(source)
+        )
+    ]
 
 
 class AccessTests(unittest.TestCase):
@@ -26,14 +31,17 @@ class AccessTests(unittest.TestCase):
             "int APS5_VABI sceExampleLength(const char* path) { return static_cast<int>(std::strlen(path)); }\n"
             "int APS5_VABI sceExampleRead(const Attr* const* attr) { if (!*attr) return 1; return 0; }\n"
         )
-        self.assertEqual(findings(source), [
-            ("sceExampleMember", "info", ["member"]),
-            ("sceExampleIndex", "values", ["index"]),
-            ("sceExampleDereference", "out", ["dereference"]),
-            ("sceExampleCopy", "out", ["library call"]),
-            ("sceExampleLength", "path", ["library call"]),
-            ("sceExampleRead", "attr", ["dereference"]),
-        ])
+        self.assertEqual(
+            findings(source),
+            [
+                ("sceExampleMember", "info", ["member"]),
+                ("sceExampleIndex", "values", ["index"]),
+                ("sceExampleDereference", "out", ["dereference"]),
+                ("sceExampleCopy", "out", ["library call"]),
+                ("sceExampleLength", "path", ["library call"]),
+                ("sceExampleRead", "attr", ["dereference"]),
+            ],
+        )
 
     def test_safe_helpers_and_non_pointer_parameters_are_not_reported(self):
         source = (
@@ -55,10 +63,13 @@ class AccessTests(unittest.TestCase):
             "int APS5_VABI sceExampleWrapped(int** guest) { int out = 0; "
             "GuestCopyIn_nid_no_patch(&out, Wrap(*guest), sizeof(out)); return out; }\n"
         )
-        self.assertEqual(findings(source), [
-            ("sceExampleNested", "guest", ["dereference"]),
-            ("sceExampleWrapped", "guest", ["dereference"]),
-        ])
+        self.assertEqual(
+            findings(source),
+            [
+                ("sceExampleNested", "guest", ["dereference"]),
+                ("sceExampleWrapped", "guest", ["dereference"]),
+            ],
+        )
 
     def test_unevaluated_guest_copy_pointer_argument_is_not_reported(self):
         source = (
@@ -76,7 +87,13 @@ class AccessTests(unittest.TestCase):
             "int APS5_VABI sceExampleSizeof(int* p, int* q) { int v = 0;\n"
             "  GuestCopyOut_nid_no_patch(q, &v, sizeof(*p)); *p = 1; return 0; }\n"
         )
-        self.assertEqual(findings(source), [("sceExampleMixed", "p", ["index"]), ("sceExampleSizeof", "p", ["dereference"])])
+        self.assertEqual(
+            findings(source),
+            [
+                ("sceExampleMixed", "p", ["index"]),
+                ("sceExampleSizeof", "p", ["dereference"]),
+            ],
+        )
 
     def test_safe_call_arguments_and_unevaluated_operands_are_not_accesses(self):
         source = (
@@ -93,7 +110,13 @@ class AccessTests(unittest.TestCase):
             "int APS5_VABI sceExampleSize(Info* p) { Info local{}; return GuestCopyIn_nid_no_patch(&local, p, p->size); }\n"
             "int APS5_VABI sceExampleLength(const char* p) { char v[8]{}; return GuestCopyIn_nid_no_patch(v, p, std::strlen(p)); }\n"
         )
-        self.assertEqual(findings(source), [("sceExampleSize", "p", ["member"]), ("sceExampleLength", "p", ["library call"])])
+        self.assertEqual(
+            findings(source),
+            [
+                ("sceExampleSize", "p", ["member"]),
+                ("sceExampleLength", "p", ["library call"]),
+            ],
+        )
 
     def test_comparisons_in_call_arguments_do_not_hide_operands(self):
         source = "int APS5_VABI sceExampleClamp(int* p, int n, int limit) { int source[2]{}; std::copy_n(source, n < limit ? n : limit, p); return 0; }\n"
@@ -106,37 +129,58 @@ class AccessTests(unittest.TestCase):
             "int APS5_VABI sceExampleNested(char* p, int n) { std::memset(Offset(n), 0, Size(p, n)); return 0; }\n"
             "int APS5_VABI sceExampleFillValue(int** p) { int* values[2]{}; std::fill(values, values + 2, p[0]); return 0; }\n"
         )
-        self.assertEqual(findings(source), [
-            ("sceExampleCopyTo", "first", ["library call"]),
-            ("sceExampleCopyTo", "p", ["library call"]),
-            ("sceExampleCopyN", "p", ["library call"]),
-            ("sceExampleFillValue", "p", ["index"]),
-        ])
+        self.assertEqual(
+            findings(source),
+            [
+                ("sceExampleCopyTo", "first", ["library call"]),
+                ("sceExampleCopyTo", "p", ["library call"]),
+                ("sceExampleCopyN", "p", ["library call"]),
+                ("sceExampleFillValue", "p", ["index"]),
+            ],
+        )
 
     def test_format_strings_are_pointer_operands(self):
         source = (
             "int APS5_VABI sceExampleSn(const char* p) { char values[32]{}; return std::snprintf(values, sizeof(values), p, 1); }\n"
             "int APS5_VABI sceExampleS(const char* p) { char values[32]{}; return sprintf(values, p, 1); }\n"
-            "int APS5_VABI sceExampleValue(const char* p) { char values[32]{}; return std::snprintf(values, sizeof(values), \"%p\", p); }\n"
+            'int APS5_VABI sceExampleValue(const char* p) { char values[32]{}; return std::snprintf(values, sizeof(values), "%p", p); }\n'
         )
-        self.assertEqual(findings(source), [("sceExampleSn", "p", ["library call"]), ("sceExampleS", "p", ["library call"])])
+        self.assertEqual(
+            findings(source),
+            [
+                ("sceExampleSn", "p", ["library call"]),
+                ("sceExampleS", "p", ["library call"]),
+            ],
+        )
 
     def test_line_is_the_earliest_access_of_any_kind(self):
-        entry, = guest_pointer_audit.audit_text(guest_pointer_audit.source_code("int APS5_VABI sceExampleEarly(Info* p)\n{\n  p[0] = {};\n  p->field = 1;\n  return 0;\n}\n"))
+        (entry,) = guest_pointer_audit.audit_text(
+            guest_pointer_audit.source_code(
+                "int APS5_VABI sceExampleEarly(Info* p)\n{\n  p[0] = {};\n  p->field = 1;\n  return 0;\n}\n"
+            )
+        )
         self.assertEqual((entry["line"], entry["kinds"]), (3, ["index", "member"]))
 
     def test_comments_and_literals_are_ignored(self):
-        source = "int APS5_VABI sceExampleText(Info* info) { // info->size = 4;\n  return Log(\"info->size *info info[0]\"); }\n"
+        source = 'int APS5_VABI sceExampleText(Info* info) { // info->size = 4;\n  return Log("info->size *info info[0]"); }\n'
         self.assertEqual(findings(source), [])
 
     def test_line_counts_blank_spliced_and_commented_lines(self):
-        source = ("int APS5_VABI sceExampleBlank(int* out)\n{\n\n\n  /* one\n     two */\n  const char* s = R\"(a\nb)\";\n"
-                  "  int wide = 1 + \\\n    2;\n\n  *out = wide;\n  return 0;\n}\n")
-        entry, = guest_pointer_audit.audit_text(guest_pointer_audit.source_code(source))
+        source = (
+            'int APS5_VABI sceExampleBlank(int* out)\n{\n\n\n  /* one\n     two */\n  const char* s = R"(a\nb)";\n'
+            "  int wide = 1 + \\\n    2;\n\n  *out = wide;\n  return 0;\n}\n"
+        )
+        (entry,) = guest_pointer_audit.audit_text(
+            guest_pointer_audit.source_code(source)
+        )
         self.assertEqual(entry["line"], 12)
 
     def test_line_points_at_the_first_access(self):
-        entry, = guest_pointer_audit.audit_text(guest_pointer_audit.source_code("int APS5_VABI sceExampleLine(int* out)\n{\n  int a = 0;\n  *out = a;\n  return 0;\n}\n"))
+        (entry,) = guest_pointer_audit.audit_text(
+            guest_pointer_audit.source_code(
+                "int APS5_VABI sceExampleLine(int* out)\n{\n  int a = 0;\n  *out = a;\n  return 0;\n}\n"
+            )
+        )
         self.assertEqual(entry["line"], 4)
 
 
@@ -149,7 +193,13 @@ class CommandLineTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(text, encoding="utf-8")
             output = io.StringIO()
-            with mock.patch.object(guest_pointer_audit, "ROOT", root), mock.patch.object(guest_pointer_audit, "PRX", root / "core" / "libs" / "prx"), contextlib.redirect_stdout(output):
+            with (
+                mock.patch.object(guest_pointer_audit, "ROOT", root),
+                mock.patch.object(
+                    guest_pointer_audit, "PRX", root / "core" / "libs" / "prx"
+                ),
+                contextlib.redirect_stdout(output),
+            ):
                 code = guest_pointer_audit.main(argv)
             return code, output.getvalue()
 
@@ -160,20 +210,72 @@ class CommandLineTests(unittest.TestCase):
         }
         code, output = self.run_main(["--json", "libSceExample"], files)
         self.assertEqual(code, 0)
-        self.assertEqual(json.loads(output), [{"library": "libSceExample", "file": "core/libs/prx/libSceExample/Export.cpp",
-                                              "function": "sceExampleGet", "parameter": "out", "line": 1, "kinds": ["dereference"]}])
+        self.assertEqual(
+            json.loads(output),
+            [
+                {
+                    "library": "libSceExample",
+                    "file": "core/libs/prx/libSceExample/Export.cpp",
+                    "function": "sceExampleGet",
+                    "parameter": "out",
+                    "line": 1,
+                    "kinds": ["dereference"],
+                }
+            ],
+        )
 
     def test_text_report_counts_per_library(self):
-        code, output = self.run_main([], {"libSceExample/Export.cpp": "int APS5_VABI sceExampleGet(int* out) { out[0] = 1; return 0; }\n"})
+        code, output = self.run_main(
+            [],
+            {
+                "libSceExample/Export.cpp": "int APS5_VABI sceExampleGet(int* out) { out[0] = 1; return 0; }\n"
+            },
+        )
         self.assertEqual(code, 0)
-        self.assertIn("core/libs/prx/libSceExample/Export.cpp:1: sceExampleGet: parameter out (index)", output)
+        self.assertIn(
+            "core/libs/prx/libSceExample/Export.cpp:1: sceExampleGet: parameter out (index)",
+            output,
+        )
         self.assertIn("1 direct guest pointer accesses in 1 exported functions", output)
 
     def test_unknown_library_is_a_usage_error(self):
-        with contextlib.redirect_stderr(io.StringIO()) as errors, self.assertRaises(SystemExit) as raised:
+        with (
+            contextlib.redirect_stderr(io.StringIO()) as errors,
+            self.assertRaises(SystemExit) as raised,
+        ):
             self.run_main(["libSceMissing"], {"libSceExample/Export.cpp": ""})
         self.assertEqual(raised.exception.code, 2)
-        self.assertIn("not a library under core/libs/prx: libSceMissing", errors.getvalue())
+        self.assertIn(
+            "not a library under core/libs/prx: libSceMissing", errors.getvalue()
+        )
+
+    def test_require_zero_fails_on_findings(self):
+        code, _ = self.run_main(
+            ["--require-zero", "libSceExample"],
+            {
+                "libSceExample/Export.cpp": "int APS5_VABI sceExampleGet(int* out) { *out = 1; return 0; }\n",
+            },
+        )
+        self.assertEqual(code, 1)
+
+    def test_require_zero_passes_on_clean_library(self):
+        code, _ = self.run_main(
+            ["--require-zero", "libSceExample"],
+            {
+                "libSceExample/Export.cpp": "int APS5_VABI sceExampleGet(int* out) { GuestCopyOut_nid_no_patch(out, &value, sizeof(value)); return 0; }\n",
+            },
+        )
+        self.assertEqual(code, 0)
+
+    def test_require_zero_applies_to_json(self):
+        code, output = self.run_main(
+            ["--json", "--require-zero", "libSceExample"],
+            {
+                "libSceExample/Export.cpp": "int APS5_VABI sceExampleGet(int* out) { *out = 1; return 0; }\n",
+            },
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(output)[0]["function"], "sceExampleGet")
 
     def test_library_selection_cannot_escape_prx(self):
         files = {

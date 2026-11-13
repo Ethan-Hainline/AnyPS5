@@ -8,18 +8,40 @@ import progress
 
 ROOT = Path(__file__).resolve().parent.parent
 PRX = ROOT / "core" / "libs" / "prx"
-SAFE = {"GuestCopyIn_nid_no_patch": (0, 1), "GuestCopyOut_nid_no_patch": (0, 1), "CopyGuestString_nid_no_patch": (0,),
-        "CopyGuestPath_nid_no_patch": (0,), "CopyGuestEnvironment_nid_no_patch": (0,)}
+SAFE = {
+    "GuestCopyIn_nid_no_patch": (0, 1),
+    "GuestCopyOut_nid_no_patch": (0, 1),
+    "CopyGuestString_nid_no_patch": (0,),
+    "CopyGuestPath_nid_no_patch": (0,),
+    "CopyGuestEnvironment_nid_no_patch": (0,),
+}
 UNEVALUATED = ("sizeof", "alignof", "decltype", "noexcept")
 RAW_CALLS = {
-    "memcpy": (0, 1), "memmove": (0, 1), "memset": (0,), "memcmp": (0, 1),
-    "strcpy": (0, 1), "strncpy": (0, 1), "strlen": (0,), "strnlen": (0,), "strcmp": (0, 1), "strncmp": (0, 1),
-    "snprintf": (0, 2), "sprintf": (0, 1), "copy": (0, 1, 2), "copy_n": (0, 2), "fill": (0, 1), "fill_n": (0,),
+    "memcpy": (0, 1),
+    "memmove": (0, 1),
+    "memset": (0,),
+    "memcmp": (0, 1),
+    "strcpy": (0, 1),
+    "strncpy": (0, 1),
+    "strlen": (0,),
+    "strnlen": (0,),
+    "strcmp": (0, 1),
+    "strncmp": (0, 1),
+    "snprintf": (0, 2),
+    "sprintf": (0, 1),
+    "copy": (0, 1, 2),
+    "copy_n": (0, 2),
+    "fill": (0, 1),
+    "fill_n": (0,),
 }
-PARAMETER = re.compile(r"([A-Za-z_][\w:<>,\s]*?(?:[*&]+\s*(?:const\b\s*)?)+)\s*(\w+)\s*$")
+PARAMETER = re.compile(
+    r"([A-Za-z_][\w:<>,\s]*?(?:[*&]+\s*(?:const\b\s*)?)+)\s*(\w+)\s*$"
+)
 RAW_CALL = re.compile(rf"\b(?:std::|::)?({'|'.join(RAW_CALLS)})\s*\(")
 QUIET_CALL = re.compile(rf"\b({'|'.join((*SAFE, *UNEVALUATED))})\s*\(")
-CAST = re.compile(r"^(?:\(\s*[\w\s:*<>]+\)(?=\s*\S)|(?:reinterpret|static|const)_cast\s*<[^>]*>|\()\s*")
+CAST = re.compile(
+    r"^(?:\(\s*[\w\s:*<>]+\)(?=\s*\S)|(?:reinterpret|static|const)_cast\s*<[^>]*>|\()\s*"
+)
 
 
 def split_top_level(text, angles=True):
@@ -70,9 +92,12 @@ def quiet(body, safe=True):
         end = closing(body, open_paren)
         spans = [(open_paren + 1, end)]
         if match.group(1) in SAFE:
-            arguments = split_top_level(body[open_paren + 1:end], angles=False)
-            spans = [(open_paren + 1 + offset, open_paren + 1 + offset + len(text))
-                     for position, (offset, text) in enumerate(arguments) if position in SAFE[match.group(1)]]
+            arguments = split_top_level(body[open_paren + 1 : end], angles=False)
+            spans = [
+                (open_paren + 1 + offset, open_paren + 1 + offset + len(text))
+                for position, (offset, text) in enumerate(arguments)
+                if position in SAFE[match.group(1)]
+            ]
         for start, stop in spans:
             for index in range(start, stop):
                 if blanked[index] != "\n":
@@ -86,12 +111,17 @@ def checked_argument_dereferences(body, name):
         if match.group(1) not in SAFE:
             continue
         open_paren = match.end() - 1
-        arguments = split_top_level(body[open_paren + 1:closing(body, open_paren)], angles=False)
+        arguments = split_top_level(
+            body[open_paren + 1 : closing(body, open_paren)], angles=False
+        )
         for position in SAFE[match.group(1)]:
             if position < len(arguments):
                 offset, argument = arguments[position]
-                found.extend((open_paren + 1 + offset + index, kind)
-                             for index, kind in accesses(quiet(argument), name) if kind == "dereference")
+                found.extend(
+                    (open_paren + 1 + offset + index, kind)
+                    for index, kind in accesses(quiet(argument), name)
+                    if kind == "dereference"
+                )
     return found
 
 
@@ -108,14 +138,21 @@ def names_parameter(argument, name):
 def accesses(body, name):
     word = re.escape(name)
     found = []
-    for kind, pattern in (("member", rf"\b{word}\s*->"), ("index", rf"\b{word}\s*\["),
-                          ("dereference", rf"(?:^|[=(,;{{}}!&|?:+\-]|\breturn)\s*\*\s*{word}\b")):
+    for kind, pattern in (
+        ("member", rf"\b{word}\s*->"),
+        ("index", rf"\b{word}\s*\["),
+        ("dereference", rf"(?:^|[=(,;{{}}!&|?:+\-]|\breturn)\s*\*\s*{word}\b"),
+    ):
         found += [(match.end() - 1, kind) for match in re.finditer(pattern, body)]
     for match in RAW_CALL.finditer(body):
         open_paren = match.end() - 1
-        arguments = split_top_level(body[open_paren + 1:closing(body, open_paren)], angles=False)
+        arguments = split_top_level(
+            body[open_paren + 1 : closing(body, open_paren)], angles=False
+        )
         for position in RAW_CALLS[match.group(1)]:
-            if position < len(arguments) and names_parameter(arguments[position][1], name):
+            if position < len(arguments) and names_parameter(
+                arguments[position][1], name
+            ):
                 found.append((open_paren + 1 + arguments[position][0], "library call"))
     return sorted(found)
 
@@ -155,14 +192,24 @@ def audit_text(text):
         open_paren = text.index("(", match.start(1))
         close_paren = text.rindex(")", 0, match.end())
         body_start = match.end() - 1
-        original_body = text[body_start:progress.body_end(text, body_start) + 1]
+        original_body = text[body_start : progress.body_end(text, body_start) + 1]
         body = quiet(original_body)
         evaluated_body = quiet(original_body, safe=False)
-        for parameter in pointer_parameters(text[open_paren + 1:close_paren]):
-            hits = sorted(accesses(body, parameter) + checked_argument_dereferences(evaluated_body, parameter))
+        for parameter in pointer_parameters(text[open_paren + 1 : close_paren]):
+            hits = sorted(
+                accesses(body, parameter)
+                + checked_argument_dereferences(evaluated_body, parameter)
+            )
             if hits:
                 line = text.count("\n", 0, body_start + hits[0][0]) + 1
-                results.append({"function": match.group(1), "parameter": parameter, "line": line, "kinds": sorted({kind for _, kind in hits})})
+                results.append(
+                    {
+                        "function": match.group(1),
+                        "parameter": parameter,
+                        "line": line,
+                        "kinds": sorted({kind for _, kind in hits}),
+                    }
+                )
     return results
 
 
@@ -174,14 +221,33 @@ def audit(libraries):
                 continue
             text = source_code(source.read_text(encoding="utf-8", errors="ignore"))
             for entry in audit_text(text):
-                report.append({"library": library.name, "file": source.relative_to(ROOT).as_posix(), **entry})
+                report.append(
+                    {
+                        "library": library.name,
+                        "file": source.relative_to(ROOT).as_posix(),
+                        **entry,
+                    }
+                )
     return report
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="List exported functions that access a guest pointer parameter directly instead of through GuestCopyIn, GuestCopyOut or the CopyGuest* helpers. A report, not a gate: it always exits 0 and does not follow a pointer passed to another function.")
-    parser.add_argument("libraries", nargs="*", help="library directories under core/libs/prx (default: all)")
-    parser.add_argument("--json", action="store_true", help="print the findings as JSON")
+    parser = argparse.ArgumentParser(
+        description="List exported functions that access a guest pointer parameter directly instead of through GuestCopyIn, GuestCopyOut or the CopyGuest* helpers. A report by default; --require-zero makes it a gate for the named libraries. It does not follow a pointer passed to another function."
+    )
+    parser.add_argument(
+        "libraries",
+        nargs="*",
+        help="library directories under core/libs/prx (default: all)",
+    )
+    parser.add_argument(
+        "--json", action="store_true", help="print the findings as JSON"
+    )
+    parser.add_argument(
+        "--require-zero",
+        action="store_true",
+        help="exit 1 when any finding is reported",
+    )
     args = parser.parse_args(argv)
     available = {path.name for path in PRX.iterdir() if path.is_dir() and not path.is_symlink()}
     names = args.libraries or sorted(available)
@@ -191,14 +257,18 @@ def main(argv=None):
     report = audit([PRX / name for name in names])
     if args.json:
         print(json.dumps(report, indent=2))
-        return 0
+        return 1 if args.require_zero and report else 0
     for entry in report:
-        print(f"{entry['file']}:{entry['line']}: {entry['function']}: parameter {entry['parameter']} ({', '.join(entry['kinds'])})")
+        print(
+            f"{entry['file']}:{entry['line']}: {entry['function']}: parameter {entry['parameter']} ({', '.join(entry['kinds'])})"
+        )
     counts = Counter(entry["library"] for entry in report)
-    print(f"{len(report)} direct guest pointer accesses in {len({(e['file'], e['function']) for e in report})} exported functions")
+    print(
+        f"{len(report)} direct guest pointer accesses in {len({(e['file'], e['function']) for e in report})} exported functions"
+    )
     for library, count in counts.most_common():
         print(f"  {count:5} {library}")
-    return 0
+    return 1 if args.require_zero and report else 0
 
 
 if __name__ == "__main__":
